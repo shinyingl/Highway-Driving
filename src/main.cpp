@@ -18,7 +18,12 @@ using std::vector;
 // start in lane 1
 int lane = 1;
 // have a referecne velocity to target
-double ref_vel = 40.0; //mph
+double ref_vel = 0;//mph
+double slowfactor = 1; // start at 2
+double gap_th = 30;
+double gapfactor = 1.0;
+double diffvfacotr = 40.0;
+
 
 int main() {
   uWS::Hub h;
@@ -57,7 +62,7 @@ int main() {
     map_waypoints_dy.push_back(d_y);
    
   }
-  
+
   
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
@@ -67,10 +72,7 @@ int main() {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
-    // // start in lane 1
-    // static int lane = 1;
-    // // have a referecne velocity to target
-    // static double ref_vel = 0.0; //mph
+   
 
     if (length && length > 2 && data[0] == '4' && data[1] == '2') {
 
@@ -104,6 +106,9 @@ int main() {
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
           
+          /*************************************************
+          * update car object? initial position (like lane), speed?
+          **************************************************/  
           // added following the video
           int prev_size = previous_path_x.size();
 
@@ -112,46 +117,121 @@ int main() {
           {
             car_s = end_path_s;
           }
-          // // start in lane 1
-          // int lane = 1;
-          // // have a referecne velocity to target
-          // double ref_vel = 20.0;//49.5; //mph
-          std::cout<< "ref_vel =" << ref_vel << std::endl;  
+         
+          // std::cout<< "ref_vel =" << ref_vel << std::endl;  
           bool too_close = false;
 
-          //find ref_v to ruse
-          for(int i = 0; i< sensor_fusion.size(); i++) {
-            //car is in my lane
-            float d = sensor_fusion[i][6];
-            if(d < (2 + 4 * lane + 2) && d > (2 + 4 *lane - 2)) {
-              double vx = sensor_fusion[i][3];
-              double vy = sensor_fusion[i][4];
-              double check_speed = sqrt(vx*vx + vy*vy);
-              double check_car_s = sensor_fusion[i][5];
+          
+          //find ref_v to ruse considering other car i
+          double FrontCarSpeed = 49.5;
+          double cost_left = 0.1; // bias for left turn
+          double cost_right = 0.0;
+          double cost_keep = 0.0;
 
-              check_car_s += ((double)prev_size*.02*check_speed);// if using previous points can project s value out
-              // check s values greater than mine and s gap
-              if(check_car_s > car_s && check_car_s-car_s < 30) {
-                // lower reference velocity so we don't crash into car in the front
-                // also flag to try to change lanes
-                // ref_vel = 29.5; 
+          double old_v = 49.5;
+
+          for(int i = 0; i< sensor_fusion.size(); i++) {
+            double other_x = sensor_fusion[i][1];
+            double other_y = sensor_fusion[i][2];
+            double other_vx = sensor_fusion[i][3];
+            double other_vy = sensor_fusion[i][4];
+            double other_speed = sqrt(other_vx*other_vx + other_vy*other_vy);
+            double other_car_s = sensor_fusion[i][5];
+            other_car_s += ((double)prev_size*.02*other_speed);// if using previous points can project s value out
+            float other_d = sensor_fusion[i][6];
+
+            double gap = other_car_s-car_s; 
+
+            bool same_lane = (other_d < (2 + 4 * lane + 2) && other_d > (2 + 4 *lane - 2));
+            bool left_lane= (other_d < (2 + 4 * (lane-1) + 2) && other_d > (2 + 4 *(lane-1) - 2));            
+            bool right_lane = (other_d < (2 + 4 * (lane+1) + 2) && other_d > (2 + 4 *(lane+1) - 2));
+            
+            // if car is in the same lane
+            if(same_lane) {
+              
+              if(gap > 0 && gap <= 30) { // is it too close
+                
                 too_close = true;
-                if(lane>0){
-                  lane = 0;
-                }
+                FrontCarSpeed = other_speed;
+                // put panalties to keep the lane if the fron car is too slow
+                cost_keep += 49.5/FrontCarSpeed * slowfactor; 
+                // cost_keep += 1.0;
+                std::cout<< "Too Close!! FrontCarSpeed =" << FrontCarSpeed << std::endl;
+                std::cout<< "Current Lane = " << lane << std::endl;  
+
               }
  
             }
-          }
+            
+            
+            if(right_lane) {// look right 
+                  double RightCarSpeed = other_speed;
+                  cost_right  += gapfactor*gap_th/abs(gap) + (FrontCarSpeed - RightCarSpeed)/diffvfacotr;                
+            }
+            
+            else if(left_lane) { // look left
+                  double LeftCarSpeed = other_speed;
+                  cost_left  += gapfactor*gap_th/abs(gap) + (FrontCarSpeed - LeftCarSpeed)/diffvfacotr;           
+            }
+            
 
-          if(too_close){
-            ref_vel -= .224;
+
+          } // loop over sensor fusion
+
+
+          // Behavior: adjust speed
+          if((too_close)  && (ref_vel > FrontCarSpeed)) {
+            ref_vel -= .224;            
           }
+          
           else if(ref_vel < 49.5){
             ref_vel += .224;
+
           }
 
-          // /* end of considering sensor fustion data code*/
+          // Behavior : change lane or keep lane
+          if(cost_right > cost_left && cost_keep > cost_left && lane>0) {
+            lane -= 1;
+            std::cout<< "Change to Left. Lane = " << lane << std::endl;
+          }
+          else if(cost_keep > cost_left && lane == 2) {
+            lane -= 1;
+            std::cout<< "Change to Left. Lane = " << lane << std::endl;
+          }
+          else if(cost_left > cost_right && cost_keep > cost_right && lane<2) {
+            lane += 1;
+            std::cout<< "Change to Right. Lane = " << lane << std::endl;
+          }
+          else if(cost_keep > cost_right && lane == 0) {
+            lane += 1;
+            std::cout<< "Change to Right. Lane = " << lane << std::endl;
+          
+          }
+
+
+
+          
+
+          // for debuggin
+          if(abs(ref_vel - old_v) >0.2 ) {
+            std::cout<< "MyCar Speed = " << ref_vel << std::endl;
+            std::cout<< "cost_left = " << cost_left << std::endl;
+            std::cout<< "cost_right = " << cost_right << std::endl;
+            std::cout<< "cost_keep = " << cost_keep << std::endl;
+
+            std::cout<< "Lane = " << lane << std::endl;
+            std::cout<< "==================== " << std::endl;
+
+            old_v = ref_vel;
+          }
+          // for debuggin
+
+
+
+
+
+
+
           vector<double> ptsx;
           vector<double> ptsy;
 
@@ -162,7 +242,7 @@ int main() {
           if(prev_size < 2) {
             // use two points that make the path tangent to the car
             double prev_car_x = car_x - cos(car_yaw);
-            double prev_car_y = car_y - cos(car_yaw);
+            double prev_car_y = car_y - sin(car_yaw);
 
             ptsx.push_back(prev_car_x);
             ptsx.push_back(car_x);
@@ -187,12 +267,9 @@ int main() {
 
           }
 
-          // // start in lane 1
-          // int lane = 1;
-          // // have a referecne velocity to target
-          // double ref_vel = 20.0;//49.5; //mph
 
-          // // In frenet add evenly 30m spaced points ahead of the starting reference
+          // // In frenet add evenly 30m spaced points ahead of the starting reference, they are used as anchor for 
+          // //spline the future trajectory follwing the lane line 
           vector<double> next_wp0 = getXY(car_s + 30, (2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
           vector<double> next_wp1 = getXY(car_s + 60, (2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
           vector<double> next_wp2 = getXY(car_s + 90, (2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -214,6 +291,7 @@ int main() {
             ptsy[i] = shift_x*sin(0-ref_yaw) + shift_y*cos(0-ref_yaw);
 
           }
+          // for debugging
           // std::cout << "ptsx:"<<std::endl;
           // for (int i=0; i<ptsx.size(); i++) {
           //   std::cout << ptsx[i] << " ";
@@ -245,9 +323,7 @@ int main() {
           // Caculate how to break up spline points so that we travel at our desired velocity
           double target_x = 30.0;
           double target_y = spline_car(target_x);
-
           double target_dist = sqrt(target_x * target_x + target_y * target_y);
-
           double x_add_on = 0;
 
           // Fill up the rest of our path planner after filling it with previous points, here we will always ouput 50 points
@@ -272,8 +348,10 @@ int main() {
             next_x_vals.push_back(x_point);
             next_y_vals.push_back(y_point);
 
-            std::cout<<"spline" << std::endl;
-            std::cout<<x_point << ','<< y_point << std::endl;
+
+            // for debugging
+            // std::cout<<"spline" << std::endl;
+            // std::cout<<x_point << ','<< y_point << std::endl;
 
 
 
@@ -282,18 +360,12 @@ int main() {
           // std::cout << x_point ;
           // end of add following the video
 
-          
-          
-
-
-          
-
           // /**
           //  * TODO: define a path made up of (x,y) points that the car will visit
           //  *   sequentially every .02 seconds
           //  */
 
-          /* first try first try in straight line */
+          /* first try: straight line */
           // // double dist_inc = 0.5;
           // // for (int i = 0; i < 50; ++i) {
           // //   next_x_vals.push_back(car_x+(dist_inc*i)*cos(deg2rad(car_yaw)));
@@ -301,7 +373,7 @@ int main() {
           // // }
           /*first try in straight line */
 
-          /*stay in a lane */
+          /*second try: stay in a lane */
           // vector<double> next_x_vals;
           // vector<double> next_y_vals;
           // double dist_inc = 0.5;
