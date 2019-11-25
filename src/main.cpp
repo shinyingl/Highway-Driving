@@ -18,9 +18,9 @@ using std::vector;
 // start in lane 1
 int lane = 1;
 // have a referecne velocity to target
-double ref_vel = 0;//mph
-double slowfactor = 1; // start at 2
-double gap_th = 30;
+double ref_vel = 0.0;//mph
+double slowfactor = 1.0; // 
+double gap_th = 30.0;
 double gapfactor = 1.0;
 double diffvfacotr = 40.0;
 
@@ -105,10 +105,7 @@ int main() {
           // Sensor Fusion Data, a list of all other cars on the same side 
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
-          
-          /*************************************************
-          * update car object? initial position (like lane), speed?
-          **************************************************/  
+
           // added following the video
           int prev_size = previous_path_x.size();
 
@@ -120,6 +117,8 @@ int main() {
          
           // std::cout<< "ref_vel =" << ref_vel << std::endl;  
           bool too_close = false;
+          bool RCmerge = false;
+          bool LCmerge = false;
 
           
           //find ref_v to ruse considering other car i
@@ -136,26 +135,27 @@ int main() {
             double other_vx = sensor_fusion[i][3];
             double other_vy = sensor_fusion[i][4];
             double other_speed = sqrt(other_vx*other_vx + other_vy*other_vy);
-            double other_car_s = sensor_fusion[i][5];
-            other_car_s += ((double)prev_size*.02*other_speed);// if using previous points can project s value out
+            double other_s = sensor_fusion[i][5];
+            other_s += ((double)prev_size*.02*other_speed);// if using previous points can project s value out
             float other_d = sensor_fusion[i][6];
-
-            double gap = other_car_s-car_s; 
+            
+            double gap_s = other_s - car_s; 
+            double gap_d = other_d - car_d;
 
             bool same_lane = (other_d < (2 + 4 * lane + 2) && other_d > (2 + 4 *lane - 2));
             bool left_lane= (other_d < (2 + 4 * (lane-1) + 2) && other_d > (2 + 4 *(lane-1) - 2));            
             bool right_lane = (other_d < (2 + 4 * (lane+1) + 2) && other_d > (2 + 4 *(lane+1) - 2));
             
+            
             // if car is in the same lane
             if(same_lane) {
               
-              if(gap > 0 && gap <= 30) { // is it too close
+              if(gap_s > 0 && gap_s <= 30) { // is it close
                 
                 too_close = true;
                 FrontCarSpeed = other_speed;
-                // put panalties to keep the lane if the fron car is too slow
+                // put penalty on staying on the same lane if the front car is too slow
                 cost_keep += 49.5/FrontCarSpeed * slowfactor; 
-                // cost_keep += 1.0;
                 std::cout<< "Too Close!! FrontCarSpeed =" << FrontCarSpeed << std::endl;
                 std::cout<< "Current Lane = " << lane << std::endl;  
 
@@ -166,15 +166,21 @@ int main() {
             
             if(right_lane) {// look right 
                   double RightCarSpeed = other_speed;
-                  cost_right  += gapfactor*gap_th/abs(gap) + (FrontCarSpeed - RightCarSpeed)/diffvfacotr;                
+                  cost_right  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - RightCarSpeed)/diffvfacotr;   
+                  // is right lane car ahead merging to my lane?
+                  if(gap_s > 0) { 
+                  bool RCmerge = abs(gap_d)<3.0 ;
+                  }            
             }
             
             else if(left_lane) { // look left
                   double LeftCarSpeed = other_speed;
-                  cost_left  += gapfactor*gap_th/abs(gap) + (FrontCarSpeed - LeftCarSpeed)/diffvfacotr;           
+                  cost_left  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - LeftCarSpeed)/diffvfacotr;
+                   // is left lane car ahead merging to my lane?
+                  if(gap_s > 0) {
+                  bool LCmerge = abs(gap_d)<3.0 ;  
+                  }            
             }
-            
-
 
           } // loop over sensor fusion
 
@@ -183,10 +189,11 @@ int main() {
           if((too_close)  && (ref_vel > FrontCarSpeed)) {
             ref_vel -= .224;            
           }
-          
+          else if(RCmerge || LCmerge){ //car on left or right merging into my lane
+            ref_vel -= .224;
+          }          
           else if(ref_vel < 49.5){
             ref_vel += .224;
-
           }
 
           // Behavior : change lane or keep lane
@@ -209,10 +216,7 @@ int main() {
           }
 
 
-
-          
-
-          // for debuggin
+          // for debugging
           if(abs(ref_vel - old_v) >0.2 ) {
             std::cout<< "MyCar Speed = " << ref_vel << std::endl;
             std::cout<< "cost_left = " << cost_left << std::endl;
@@ -224,12 +228,7 @@ int main() {
 
             old_v = ref_vel;
           }
-          // for debuggin
-
-
-
-
-
+          // for debugging
 
 
           vector<double> ptsx;
@@ -353,17 +352,7 @@ int main() {
             // std::cout<<"spline" << std::endl;
             // std::cout<<x_point << ','<< y_point << std::endl;
 
-
-
           }
-
-          // std::cout << x_point ;
-          // end of add following the video
-
-          // /**
-          //  * TODO: define a path made up of (x,y) points that the car will visit
-          //  *   sequentially every .02 seconds
-          //  */
 
           /* first try: straight line */
           // // double dist_inc = 0.5;
