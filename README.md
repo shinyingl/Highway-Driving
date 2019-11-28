@@ -31,7 +31,7 @@ The lane change decision is made by calculating the cost function. Three wightin
 * `cost_right  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - RightCarSpeed)/diffvfacotr; ` --> 1. inverse propotional the the gap_s (the gap between my car and the car in the front) 2. prefer right car speed ahead is faster for lane change
 * `cost_left  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - LeftCarSpeed)/diffvfacotr;` --> same as right lane change cost function.
 
-I notice that my car will show some bifurcation behavior (speed up and slow down between 2 speeds) if there is a slow car in the front before the program finds a good chance to change lane. I guess maybe the PID control coming up later in the program will shine some light on how to solve this problem. 
+I notice that my car speed up and slow down between 2 speeds if there is a slow car in the front before there is a chance to change lane. I guess maybe the PID control coming up later in the program will shine some light on how to solve this problem. 
 
 ## Basic Build Instructions
 
