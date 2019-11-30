@@ -29,7 +29,7 @@ The behavior is decided as the flow chart below:
 The lane change decision is made by calculating the cost function. Three wighting factors 'slowfactor', 'gap factor', and 'diffvfactor' are used to as tuning parameters to optimize the performace.  
 
 * `cost_keep += 49.5/FrontCarSpeed * slowfactor;` --> the cost to keep in the same lane is inverse propotional to the speed of the front car. 
-* `cost_right  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - RightCarSpeed)/diffvfacotr; ` --> the cost to change the lane to the right is 1. inverse propotional the the gap_s (the gap between my car and the car in the front) 2. prefer right car speed ahead is faster for lane change
+* `cost_right  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - RightCarSpeed)/diffvfacotr; ` --> the cost to change the lane to the right is 1. inverse propotional the the gap_s (the gap between my car and the car in the front) 2. lower if the speed of right car ahead is faster
 * `cost_left  += gapfactor*gap_th/abs(gap_s) + (FrontCarSpeed - LeftCarSpeed)/diffvfacotr;` --> same as right lane change cost function.
 
 ### Trojectory (line 113 to 230)
