@@ -102,8 +102,7 @@ int main() {
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
 
-          // Sensor Fusion Data, a list of all other cars on the same side 
-          //   of the road.
+          // Sensor Fusion Data, a list of all other cars on the same side of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
 
           // added following the video
@@ -123,7 +122,7 @@ int main() {
           
           //find ref_v to ruse considering other car i
           double FrontCarSpeed = 49.5;
-          double cost_left = 0.1; // bias for left turn
+          double cost_left = 0.1; // bias for left turn, to break the symmetry if cost of left and right is the same.
           double cost_right = 0.0;
           double cost_keep = 0.0;
 
